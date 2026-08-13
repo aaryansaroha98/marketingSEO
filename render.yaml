@@ -20,6 +20,8 @@ services:
         fromDatabase:
           name: marketpilot-db
           property: connectionString
+      - key: NEON_DATABASE_URL
+        sync: false
       - key: APP_SECRET
         generateValue: true
       - key: ENCRYPTION_KEY

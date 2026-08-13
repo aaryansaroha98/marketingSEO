@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     database_url: str = "sqlite:///./marketpilot.db"
+    neon_database_url: str = ""
     app_secret: str = "local-development-secret"
     encryption_key: str = "local-encryption-key"
     frontend_url: str = "http://localhost:3000"
