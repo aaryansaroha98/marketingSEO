@@ -1,0 +1,33 @@
+name: Production uptime check
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17,47 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-uptime-check
+  cancel-in-progress: true
+
+jobs:
+  health-check:
+    if: github.event_name == 'workflow_dispatch' || vars.ENABLE_UPTIME_MONITORING == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check Render API
+        run: |
+          curl --fail --silent --show-error \
+            --retry 3 --retry-all-errors --retry-delay 10 \
+            --connect-timeout 10 --max-time 60 \
+            https://marketpilot-api-oy6x.onrender.com/health
+
+      - name: Check Vercel-to-Render path
+        run: |
+          curl --fail --silent --show-error \
+            --retry 3 --retry-all-errors --retry-delay 10 \
+            --connect-timeout 10 --max-time 60 \
+            https://marketing-seo-flame.vercel.app/api/health
