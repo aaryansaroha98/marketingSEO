@@ -18,9 +18,17 @@ function errorMessage(body: unknown): string {
 }
 
 async function request<T>(path: string, init?: RequestInit, allowRetry = true): Promise<T> {
-  const response = await fetch(`/api/backend${path}`, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
+  let response: Response;
+  try {
+    response = await fetch(`/api/backend${path}`, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
+  } catch {
+    throw new Error("The server could not be reached. Check system status and retry.");
+  }
   if (response.status === 204) return undefined as T;
-  const body: unknown = await response.json().catch(() => ({}));
+  const text = await response.text();
+  let body: unknown = {};
+  try { body = text ? JSON.parse(text) : {}; }
+  catch { body = text ? { detail: text } : {}; }
   const method = init?.method ?? "GET";
   if (!response.ok && allowRetry && method === "GET" && response.status >= 500) {
     await new Promise((resolve) => window.setTimeout(resolve, 2500));

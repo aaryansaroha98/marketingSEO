@@ -31,9 +31,13 @@ def fallback_plan(name: str, objective: str, channels: list[str], brand: BrandPr
     }
 
 
+AI_FALLBACK_ERRORS = (httpx.HTTPError, KeyError, ValueError, RuntimeError, TypeError, IndexError)
+MAX_CONTENT_TITLE_LENGTH = 300
+
+
 def fallback_content(channel: str, plan: dict[str, Any], brand: BrandProfile) -> dict[str, str]:
-    audience = plan["audience"]
-    offer = plan["offer"]
+    audience = str(plan.get("audience") or "the startup's ideal customers")
+    offer = str(plan.get("offer") or "explore the product")
     title = f"A better way for {audience}"
     body = (
         f"Most {audience} do not need more noise—they need a clearer path to results. "
@@ -43,8 +47,9 @@ def fallback_content(channel: str, plan: dict[str, Any], brand: BrandProfile) ->
     if channel == "x":
         body = body[:276]
     if channel == "reddit":
-        title = f"What are teams getting wrong about {plan['campaign_name']}?"
-    return {"title": title, "body": body}
+        campaign_name = str(plan.get("campaign_name") or "this problem")
+        title = f"What are teams getting wrong about {campaign_name}?"
+    return {"title": title[:MAX_CONTENT_TITLE_LENGTH], "body": body}
 
 
 async def _complete_json(system: str, prompt: str) -> dict[str, Any]:
@@ -57,7 +62,7 @@ async def _complete_json(system: str, prompt: str) -> dict[str, Any]:
         "response_format": {"type": "json_object"},
         "temperature": 0.5,
     }
-    async with httpx.AsyncClient(timeout=60) as client:
+    async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds) as client:
         response = await client.post(
             f"{settings.ai_base_url.rstrip('/')}/chat/completions",
             headers={"Authorization": f"Bearer {settings.ai_api_key}"},
@@ -65,7 +70,10 @@ async def _complete_json(system: str, prompt: str) -> dict[str, Any]:
         )
         response.raise_for_status()
     content = response.json()["choices"][0]["message"]["content"]
-    return json.loads(content)
+    result = json.loads(content)
+    if not isinstance(result, dict):
+        raise ValueError("AI response must be a JSON object")
+    return result
 
 
 async def build_campaign_plan(name: str, objective: str, channels: list[str], brand: BrandProfile) -> dict[str, Any]:
@@ -83,7 +91,7 @@ async def build_campaign_plan(name: str, objective: str, channels: list[str], br
     try:
         plan = await _complete_json(system, prompt)
         return {**fallback, **plan, "generated_by": "ai"}
-    except (httpx.HTTPError, KeyError, ValueError, RuntimeError, json.JSONDecodeError):
+    except AI_FALLBACK_ERRORS:
         return {**fallback, "generated_by": "rules"}
 
 
@@ -96,12 +104,12 @@ async def build_channel_content(channel: str, plan: dict[str, Any], brand: Brand
     prompt = json.dumps({"strategy": plan, "brand": {"name": brand.startup_name, "voice": brand.voice}})
     try:
         content = await _complete_json(system, prompt)
-        title = str(content.get("title", fallback["title"]))[:300]
+        title = str(content.get("title", fallback["title"]))[:MAX_CONTENT_TITLE_LENGTH]
         body = str(content.get("body", fallback["body"]))
         if channel == "x":
             body = body[:280]
         return {"title": title, "body": body}
-    except (httpx.HTTPError, KeyError, ValueError, RuntimeError, json.JSONDecodeError):
+    except AI_FALLBACK_ERRORS:
         return fallback
 
 

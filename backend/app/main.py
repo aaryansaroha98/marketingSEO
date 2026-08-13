@@ -136,17 +136,24 @@ def list_campaigns(db: Session = Db):
 
 @app.post("/v1/campaigns", response_model=schemas.CampaignOut, status_code=201, dependencies=[Auth])
 async def create_campaign(payload: schemas.CampaignInput, db: Session = Db):
+    from asyncio import gather
+    from sqlalchemy.exc import SQLAlchemyError
+
     brand = brand_or_create(db)
     plan = await ai.build_campaign_plan(payload.name, payload.objective, payload.channels, brand)
+    drafts = await gather(*(ai.build_channel_content(channel, plan, brand) for channel in payload.channels))
     campaign = models.Campaign(name=payload.name, objective=payload.objective, channels=payload.channels, channel="Multi-channel", strategy=plan)
-    db.add(campaign)
-    db.flush()
-    for channel in payload.channels:
-        draft = await ai.build_channel_content(channel, plan, brand)
-        db.add(models.ContentItem(campaign_id=campaign.id, platform=channel, title=draft["title"], body=draft["body"]))
-    db.add(models.AuditLog(action="campaign.created", entity_type="campaign", entity_id=campaign.id, detail={"channels": payload.channels, "generator": plan.get("generated_by")}))
-    db.commit()
-    db.refresh(campaign)
+    try:
+        db.add(campaign)
+        db.flush()
+        for channel, draft in zip(payload.channels, drafts, strict=True):
+            db.add(models.ContentItem(campaign_id=campaign.id, platform=channel, title=draft["title"][:300], body=draft["body"]))
+        db.add(models.AuditLog(action="campaign.created", entity_type="campaign", entity_id=campaign.id, detail={"channels": payload.channels, "generator": plan.get("generated_by")}))
+        db.commit()
+        db.refresh(campaign)
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise HTTPException(503, "Campaign could not be saved. Please retry.") from error
     return campaign
 
 

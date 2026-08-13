@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     ai_api_key: str = ""
     ai_base_url: str = "https://api.openai.com/v1"
     ai_model: str = "gpt-5-mini"
+    ai_timeout_seconds: float = 18.0
 
     brevo_api_key: str = ""
     brevo_sender_email: str = ""
