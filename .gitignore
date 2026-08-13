@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+coverage/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vercel/
+backend/.venv/
+backend/*.db
+__pycache__/
+*.pyc
+.vscode/
+*.tsbuildinfo
