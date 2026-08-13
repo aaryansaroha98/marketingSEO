@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from sqlalchemy import desc, func, select
+from sqlalchemy import delete, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from . import ai, integrations, models, schemas, seo
@@ -68,7 +68,7 @@ def content_out(item: models.ContentItem) -> schemas.ContentOut:
     return schemas.ContentOut(
         id=item.id, campaign_id=item.campaign_id, type=item.platform.title(), title=item.title,
         body=item.body, time=item.scheduled_at.isoformat() if item.scheduled_at else "Not scheduled",
-        state=item.status, media_url=item.media_url, external_id=item.external_id,
+        state=item.status, media_url=item.media_url, external_id=item.external_id, created_at=item.created_at,
     )
 
 
@@ -78,8 +78,10 @@ def lead_out(item: models.Lead) -> schemas.LeadOut:
 
 
 def integration_out(item: models.Integration) -> schemas.IntegrationOut:
-    status = "ready" if item.provider == "brevo" and integrations.configured("brevo", settings) else item.status
-    return schemas.IntegrationOut(provider=item.provider, status=status, configured=integrations.configured(item.provider, settings), account_name=item.account_name)
+    brevo_ready = bool(settings.brevo_api_key and settings.brevo_sender_email)
+    status = "ready" if item.provider == "brevo" and brevo_ready else item.status
+    configured = brevo_ready if item.provider == "brevo" else integrations.configured(item.provider, settings)
+    return schemas.IntegrationOut(provider=item.provider, status=status, configured=configured, account_name=item.account_name)
 
 
 @app.get("/v1/profile", response_model=schemas.BrandOut, dependencies=[Auth])
@@ -104,15 +106,24 @@ def dashboard(db: Session = Db):
     content = list(db.scalars(select(models.ContentItem).order_by(desc(models.ContentItem.created_at)).limit(50)))
     leads = list(db.scalars(select(models.Lead).order_by(desc(models.Lead.score), desc(models.Lead.created_at)).limit(100)))
     provider_items = list(db.scalars(select(models.Integration).order_by(models.Integration.provider)))
+    activity = list(db.scalars(select(models.AuditLog).order_by(desc(models.AuditLog.created_at)).limit(20)))
+    campaign_total = int(db.scalar(select(func.count()).select_from(models.Campaign)) or 0)
+    lead_total = int(db.scalar(select(func.count()).select_from(models.Lead)) or 0)
+    content_total = int(db.scalar(select(func.count()).select_from(models.ContentItem)) or 0)
+    qualified_total = int(db.scalar(select(func.count()).select_from(models.Lead).where(models.Lead.score >= 80)) or 0)
+    approved_total = int(db.scalar(select(func.count()).select_from(models.ContentItem).where(models.ContentItem.status.in_(["Approved", "Published"]))) or 0)
     return schemas.DashboardOut(
         campaigns=campaigns,
         content=[content_out(item) for item in content],
         leads=[lead_out(item) for item in leads],
         integrations=[integration_out(item) for item in provider_items],
+        activity=activity,
         metrics={
-            "campaigns": len(campaigns),
-            "qualified_leads": sum(lead.score >= 80 for lead in leads),
-            "approved_content": sum(item.status in {"Approved", "Published"} for item in content),
+            "campaigns": campaign_total,
+            "leads": lead_total,
+            "content": content_total,
+            "qualified_leads": qualified_total,
+            "approved_content": approved_total,
             "connected_channels": sum(integration_out(item).status in {"connected", "ready"} for item in provider_items),
         },
     )
@@ -167,8 +178,11 @@ def list_leads(db: Session = Db):
 def create_lead(payload: schemas.LeadInput, db: Session = Db):
     if db.scalar(select(models.Lead).where(models.Lead.email == payload.email)):
         raise HTTPException(409, "A lead with this email already exists")
-    score = 55 + (10 if payload.company else 0) + (10 if payload.consent else 0)
-    lead = models.Lead(**payload.model_dump(), score=min(score, 100))
+    values = payload.model_dump()
+    requested_score = values.pop("score")
+    stage = values.pop("stage")
+    calculated_score = 55 + (10 if payload.company else 0) + (10 if payload.consent else 0)
+    lead = models.Lead(**values, score=requested_score if requested_score is not None else min(calculated_score, 100), stage=stage)
     db.add(lead)
     db.add(models.AuditLog(action="lead.created", entity_type="lead", entity_id=lead.id, detail={"source": lead.source, "consent": lead.consent}))
     db.commit()
@@ -248,3 +262,127 @@ async def run_seo_audit(payload: schemas.SeoInput, db: Session = Db):
 @app.get("/v1/seo/latest", response_model=schemas.SeoOut | None, dependencies=[Auth])
 def latest_seo_audit(db: Session = Db):
     return db.scalar(select(models.SeoAudit).order_by(desc(models.SeoAudit.created_at)).limit(1))
+
+
+@app.patch("/v1/campaigns/{campaign_id}", response_model=schemas.CampaignOut, dependencies=[Auth])
+def update_campaign(campaign_id: str, payload: schemas.CampaignUpdate, db: Session = Db):
+    campaign = db.get(models.Campaign, campaign_id)
+    if campaign is None:
+        raise HTTPException(404, "Campaign not found")
+    for key, value in payload.model_dump(exclude_none=True).items():
+        setattr(campaign, key, value)
+    db.add(models.AuditLog(action="campaign.updated", entity_type="campaign", entity_id=campaign.id, detail=payload.model_dump(exclude_none=True)))
+    db.commit()
+    db.refresh(campaign)
+    return campaign
+
+
+@app.delete("/v1/campaigns/{campaign_id}", status_code=204, dependencies=[Auth])
+def delete_campaign(campaign_id: str, db: Session = Db):
+    campaign = db.get(models.Campaign, campaign_id)
+    if campaign is None:
+        raise HTTPException(404, "Campaign not found")
+    db.execute(delete(models.ContentItem).where(models.ContentItem.campaign_id == campaign_id))
+    db.delete(campaign)
+    db.add(models.AuditLog(action="campaign.deleted", entity_type="campaign", entity_id=campaign_id))
+    db.commit()
+
+
+@app.patch("/v1/content/{content_id}", response_model=schemas.ContentOut, dependencies=[Auth])
+def update_content(content_id: str, payload: schemas.ContentUpdate, db: Session = Db):
+    item = db.get(models.ContentItem, content_id)
+    if item is None:
+        raise HTTPException(404, "Content item not found")
+    if item.status == "Published":
+        raise HTTPException(409, "Published content is immutable")
+    for key, value in payload.model_dump(exclude_none=True).items():
+        setattr(item, key, value)
+    if item.status == "Approved":
+        item.status = "Review"
+    db.add(models.AuditLog(action="content.updated", entity_type="content", entity_id=item.id))
+    db.commit()
+    db.refresh(item)
+    return content_out(item)
+
+
+@app.delete("/v1/content/{content_id}", status_code=204, dependencies=[Auth])
+def delete_content(content_id: str, db: Session = Db):
+    item = db.get(models.ContentItem, content_id)
+    if item is None:
+        raise HTTPException(404, "Content item not found")
+    if item.status == "Published":
+        raise HTTPException(409, "Published content cannot be deleted from its audit history")
+    db.delete(item)
+    db.add(models.AuditLog(action="content.deleted", entity_type="content", entity_id=content_id))
+    db.commit()
+
+
+@app.patch("/v1/leads/{lead_id}", response_model=schemas.LeadOut, dependencies=[Auth])
+def update_lead(lead_id: str, payload: schemas.LeadUpdate, db: Session = Db):
+    lead = db.get(models.Lead, lead_id)
+    if lead is None:
+        raise HTTPException(404, "Lead not found")
+    changes = payload.model_dump(exclude_none=True)
+    email = changes.get("email")
+    if email and db.scalar(select(models.Lead).where(models.Lead.email == email, models.Lead.id != lead_id)):
+        raise HTTPException(409, "A lead with this email already exists")
+    for key, value in changes.items():
+        setattr(lead, key, value)
+    db.add(models.AuditLog(action="lead.updated", entity_type="lead", entity_id=lead.id, detail={"fields": list(changes)}))
+    db.commit()
+    db.refresh(lead)
+    return lead_out(lead)
+
+
+@app.delete("/v1/leads/{lead_id}", status_code=204, dependencies=[Auth])
+def delete_lead(lead_id: str, db: Session = Db):
+    lead = db.get(models.Lead, lead_id)
+    if lead is None:
+        raise HTTPException(404, "Lead not found")
+    db.delete(lead)
+    db.add(models.AuditLog(action="lead.deleted", entity_type="lead", entity_id=lead_id))
+    db.commit()
+
+
+@app.delete("/v1/integrations/{provider}", dependencies=[Auth])
+def disconnect_integration(provider: str, db: Session = Db):
+    if provider == "brevo":
+        raise HTTPException(409, "Remove Brevo credentials in Render to disable it")
+    item = integrations.get_integration(db, provider)
+    item.status = "not_connected"
+    item.account_id = ""
+    item.account_name = ""
+    item.access_token = ""
+    item.refresh_token = ""
+    item.expires_at = None
+    item.details = {}
+    db.add(models.AuditLog(action="integration.disconnected", entity_type="integration", entity_id=item.id, detail={"provider": provider}))
+    db.commit()
+    return {"status": "disconnected", "provider": provider}
+
+
+@app.get("/v1/search", response_model=schemas.SearchOut, dependencies=[Auth])
+def search_workspace(q: str = Query(min_length=2, max_length=120), db: Session = Db):
+    term = f"%{q.strip()}%"
+    campaigns = list(db.scalars(select(models.Campaign).where(or_(models.Campaign.name.ilike(term), models.Campaign.objective.ilike(term))).limit(10)))
+    content = list(db.scalars(select(models.ContentItem).where(or_(models.ContentItem.title.ilike(term), models.ContentItem.body.ilike(term))).limit(10)))
+    leads = list(db.scalars(select(models.Lead).where(or_(models.Lead.name.ilike(term), models.Lead.email.ilike(term), models.Lead.company.ilike(term))).limit(10)))
+    return schemas.SearchOut(campaigns=campaigns, content=[content_out(item) for item in content], leads=[lead_out(item) for item in leads])
+
+
+@app.get("/v1/analytics", response_model=schemas.AnalyticsOut, dependencies=[Auth])
+def analytics_summary(db: Session = Db):
+    totals = {
+        "campaigns": int(db.scalar(select(func.count()).select_from(models.Campaign)) or 0),
+        "content": int(db.scalar(select(func.count()).select_from(models.ContentItem)) or 0),
+        "leads": int(db.scalar(select(func.count()).select_from(models.Lead)) or 0),
+        "qualified_leads": int(db.scalar(select(func.count()).select_from(models.Lead).where(models.Lead.score >= 80)) or 0),
+        "published": int(db.scalar(select(func.count()).select_from(models.ContentItem).where(models.ContentItem.status == "Published")) or 0),
+    }
+    platform_rows = db.execute(select(models.ContentItem.platform, func.count()).group_by(models.ContentItem.platform)).all()
+    action_rows = db.execute(select(models.AuditLog.action, func.count()).group_by(models.AuditLog.action)).all()
+    return schemas.AnalyticsOut(
+        totals=totals,
+        content_by_platform={str(name): int(count) for name, count in platform_rows},
+        actions={str(name): int(count) for name, count in action_rows},
+    )

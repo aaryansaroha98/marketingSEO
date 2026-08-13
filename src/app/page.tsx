@@ -15,7 +15,7 @@ export default function Home() {
         <Link className="button button-small button-ghost" href="/app">Open workspace <span>↗</span></Link>
       </nav>
       <section className="hero shell">
-        <div className="eyebrow"><span className="pulse" /> Your AI growth team is online</div>
+        <div className="eyebrow"><span className="pulse" /> One workspace for focused startup growth</div>
         <h1>Marketing that moves<br /><em>at the speed of ambition.</em></h1>
         <p className="hero-copy">Strategy, content, SEO, social, and qualified leads—working together in one intelligent command center.</p>
         <div className="hero-actions">
@@ -29,7 +29,7 @@ export default function Home() {
         <div className="outcome-grid">
           {outcomes.map(([number, title, copy]) => (
             <article className="outcome-card" key={number}>
-              <span>{number}</span><h2>{title}</h2><p>{copy}</p><b>Explore capability →</b>
+              <span>{number}</span><h2>{title}</h2><p>{copy}</p><Link href="/app">Open workspace →</Link>
             </article>
           ))}
         </div>
@@ -43,12 +43,13 @@ export default function Home() {
             <Link className="button button-primary" href="/app">Enter command center <span>→</span></Link>
           </div>
           <div className="mini-dashboard">
-            <div className="mini-top"><span>Growth overview</span><small>Last 30 days</small></div>
-            <div className="mini-metric"><small>Marketing pipeline</small><strong>$184,320</strong><em>↗ 24.8%</em></div>
-            <div className="mini-chart">
-              {[28, 42, 35, 54, 49, 67, 58, 76, 70, 88, 82, 96].map((height, index) => <i key={index} style={{ height: `${height}%` }} />)}
+            <div className="mini-top"><span>Connected growth workflow</span><small>Real, approval-led operations</small></div>
+            <div className="capability-list">
+              <div><i>01</i><span><b>Understand</b><small>Startup profile, audience, offer, and voice</small></span><em>Saved</em></div>
+              <div><i>02</i><span><b>Create</b><small>Campaign strategy and channel-specific drafts</small></span><em>Review</em></div>
+              <div><i>03</i><span><b>Publish</b><small>Explicit approval through connected providers</small></span><em>Controlled</em></div>
+              <div><i>04</i><span><b>Learn</b><small>Verified SEO, lead, and activity records</small></span><em>Measured</em></div>
             </div>
-            <div className="mini-bottom"><div><b>342</b><small>New leads</small></div><div><b>18.6%</b><small>Conversion</small></div><div><b>4.7×</b><small>Return</small></div></div>
           </div>
         </div>
       </section>

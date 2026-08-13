@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 const backendUrl = process.env.RENDER_API_URL ?? "http://localhost:8000";
 const appSecret = process.env.BACKEND_APP_SECRET ?? "local-development-secret";
 
+export const maxDuration = 60;
+
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   const target = new URL(path.join("/"), `${backendUrl.replace(/\/$/, "")}/`);
@@ -17,7 +19,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       },
       body: ["GET", "HEAD"].includes(request.method) ? undefined : await request.text(),
       cache: "no-store",
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(55_000),
     });
     return new NextResponse(response.body, {
       status: response.status,

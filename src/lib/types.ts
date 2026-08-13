@@ -4,7 +4,7 @@ export type Campaign = {
   objective: string;
   channel: string;
   channels: string[];
-  status: "Live" | "Draft" | "Review";
+  status: "Live" | "Draft" | "Review" | "Completed";
   progress: number;
   leads: number;
   accent: string;
@@ -22,6 +22,7 @@ export type ContentItem = {
   state: string;
   media_url: string;
   external_id: string;
+  created_at: string;
 };
 
 export type Lead = {
@@ -34,6 +35,7 @@ export type Lead = {
   stage: string;
   initials: string;
   consent: boolean;
+  created_at: string;
 };
 
 export type Integration = {
@@ -42,7 +44,6 @@ export type Integration = {
   configured: boolean;
   account_name: string;
 };
-
 
 export type BrandProfile = {
   id: string;
@@ -61,4 +62,25 @@ export type SeoResult = {
   score: number;
   issues: Array<{ issue: string; impact: string; fix: string }>;
   details?: Record<string, unknown>;
+};
+
+export type Activity = {
+  id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  detail: Record<string, unknown>;
+  created_at: string;
+};
+
+export type SearchResults = {
+  campaigns: Campaign[];
+  content: ContentItem[];
+  leads: Lead[];
+};
+
+export type Analytics = {
+  totals: Record<string, number>;
+  content_by_platform: Record<string, number>;
+  actions: Record<string, number>;
 };
