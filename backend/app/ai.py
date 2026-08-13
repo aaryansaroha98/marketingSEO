@@ -76,6 +76,28 @@ async def _complete_json(system: str, prompt: str) -> dict[str, Any]:
     return result
 
 
+def provider_label(base_url: str) -> str:
+    value = base_url.lower()
+    if "generativelanguage.googleapis.com" in value:
+        return "Google Gemini"
+    if "api.groq.com" in value:
+        return "Groq"
+    if "openrouter.ai" in value:
+        return "OpenRouter"
+    if "api.openai.com" in value:
+        return "OpenAI"
+    return "OpenAI-compatible"
+
+
+async def test_connection() -> None:
+    result = await _complete_json(
+        "Return only a JSON object with status set to ok.",
+        json.dumps({"task": "Confirm that this model can return structured JSON."}),
+    )
+    if str(result.get("status", "")).lower() != "ok":
+        raise ValueError("AI provider returned an invalid test response")
+
+
 async def build_campaign_plan(name: str, objective: str, channels: list[str], brand: BrandProfile) -> dict[str, Any]:
     fallback = fallback_plan(name, objective, channels, brand)
     system = (

@@ -197,6 +197,34 @@ def create_lead(payload: schemas.LeadInput, db: Session = Db):
     return lead_out(lead)
 
 
+@app.get("/v1/ai/status", response_model=schemas.AiStatusOut, dependencies=[Auth])
+def ai_status():
+    configured = bool(settings.ai_api_key)
+    return schemas.AiStatusOut(
+        provider=ai.provider_label(settings.ai_base_url),
+        status="configured" if configured else "not_configured",
+        configured=configured,
+        model=settings.ai_model,
+        fallback_enabled=True,
+    )
+
+
+@app.post("/v1/ai/test", response_model=schemas.AiTestOut, dependencies=[Auth])
+async def test_ai_connection():
+    if not settings.ai_api_key:
+        raise HTTPException(409, "AI provider is not configured in Render")
+    try:
+        await ai.test_connection()
+    except ai.AI_FALLBACK_ERRORS as error:
+        raise HTTPException(502, "AI provider test failed. Verify the API key, base URL, model, and provider quota.") from error
+    return schemas.AiTestOut(
+        provider=ai.provider_label(settings.ai_base_url),
+        status="ok",
+        model=settings.ai_model,
+        message="AI provider responded with valid structured output",
+    )
+
+
 @app.get("/v1/integrations", response_model=list[schemas.IntegrationOut], dependencies=[Auth])
 def list_integrations(db: Session = Db):
     return [integration_out(item) for item in db.scalars(select(models.Integration).order_by(models.Integration.provider))]

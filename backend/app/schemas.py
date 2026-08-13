@@ -125,6 +125,21 @@ class IntegrationOut(ApiModel):
     account_name: str
 
 
+class AiStatusOut(ApiModel):
+    provider: str
+    status: Literal["configured", "not_configured"]
+    configured: bool
+    model: str
+    fallback_enabled: bool
+
+
+class AiTestOut(ApiModel):
+    provider: str
+    status: Literal["ok"]
+    model: str
+    message: str
+
+
 class SeoInput(ApiModel):
     url: str = Field(min_length=8, max_length=1000)
 

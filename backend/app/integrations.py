@@ -43,13 +43,13 @@ def get_integration(db: Session, provider: str) -> Integration:
 
 def configured(provider: str, settings: Settings) -> bool:
     mapping = {
-        "x": settings.x_client_id,
-        "linkedin": settings.linkedin_client_id,
-        "instagram": settings.meta_client_id,
-        "reddit": settings.reddit_client_id,
-        "brevo": settings.brevo_api_key,
+        "x": bool(settings.x_client_id),
+        "linkedin": bool(settings.linkedin_client_id and settings.linkedin_client_secret),
+        "instagram": bool(settings.meta_client_id and settings.meta_client_secret),
+        "reddit": bool(settings.reddit_client_id and settings.reddit_client_secret),
+        "brevo": bool(settings.brevo_api_key),
     }
-    return bool(mapping.get(provider))
+    return mapping.get(provider, False)
 
 
 def callback_url(provider: str, settings: Settings) -> str:

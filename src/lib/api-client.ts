@@ -1,4 +1,4 @@
-import type { Activity, Analytics, BrandProfile, Campaign, ContentItem, Integration, Lead, SearchResults, SeoResult } from "./types";
+import type { Activity, AiStatus, AiTestResult, Analytics, BrandProfile, Campaign, ContentItem, Integration, Lead, SearchResults, SeoResult } from "./types";
 
 export type DashboardData = {
   campaigns: Campaign[];
@@ -48,6 +48,8 @@ export const api = {
   },
   profile: () => request<BrandProfile>("/v1/profile"),
   updateProfile: (profile: Omit<BrandProfile, "id" | "updated_at">) => request<BrandProfile>("/v1/profile", { method: "PUT", body: JSON.stringify(profile) }),
+  aiStatus: () => request<AiStatus>("/v1/ai/status"),
+  testAi: () => request<AiTestResult>("/v1/ai/test", { method: "POST" }),
   createCampaign: (name: string, objective: string) => request<Campaign>("/v1/campaigns", { method: "POST", body: JSON.stringify({ name, objective, channels: ["linkedin", "x", "instagram", "reddit"] }) }),
   updateCampaign: (id: string, changes: Partial<Pick<Campaign, "name" | "objective" | "status">>) => request<Campaign>(`/v1/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(changes) }),
   deleteCampaign: (id: string) => request<void>(`/v1/campaigns/${id}`, { method: "DELETE" }),

@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api, type DashboardData } from "@/lib/api-client";
-import type { Analytics, Campaign, ContentItem, Lead, SearchResults, SeoResult } from "@/lib/types";
+import type { AiStatus, Analytics, Campaign, ContentItem, Lead, SearchResults, SeoResult } from "@/lib/types";
 
-const nav = ["Overview", "Campaigns", "Content", "SEO", "Leads", "Analytics", "Setup"];
-const icons: Record<string, string> = { Overview: "⌘", Campaigns: "◫", Content: "✦", SEO: "⌁", Leads: "♙", Analytics: "⌇", Setup: "⚙" };
+const nav = ["Overview", "Campaigns", "Content", "SEO", "Leads", "Analytics", "AI Settings", "Setup"];
+const icons: Record<string, string> = { Overview: "⌘", Campaigns: "◫", Content: "✦", SEO: "⌁", Leads: "♙", Analytics: "⌇", "AI Settings": "◇", Setup: "⚙" };
 const providerLabels: Record<string, string> = { x: "X", linkedin: "LinkedIn", instagram: "Instagram", reddit: "Reddit", brevo: "Brevo Mail" };
 const blankDashboard: DashboardData = { campaigns: [], content: [], leads: [], integrations: [], activity: [], metrics: { campaigns: 0, leads: 0, content: 0, qualified_leads: 0, approved_content: 0, connected_channels: 0 } };
 const blankAnalytics: Analytics = { totals: {}, content_by_platform: {}, actions: {} };
@@ -44,6 +44,8 @@ export function MarketingConsole() {
   const [searchResults, setSearchResults] = useState<SearchResults | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const [showHealth, setShowHealth] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [aiTestMessage, setAiTestMessage] = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -62,13 +64,14 @@ export function MarketingConsole() {
   useEffect(() => {
     void (async () => {
       await refresh();
-      const [profileResult, seoResult] = await Promise.allSettled([api.profile(), api.latestSeo()]);
+      const [profileResult, seoHistoryResult, aiStatusResult] = await Promise.allSettled([api.profile(), api.latestSeo(), api.aiStatus()]);
       if (profileResult.status === "fulfilled") {
         const value = profileResult.value;
         setProfile({ startup_name: value.startup_name, website: value.website, description: value.description, audience: value.audience, offer: value.offer, voice: value.voice });
         setSeoUrl(value.website);
       }
-      if (seoResult.status === "fulfilled") setSeoResult(seoResult.value);
+      if (seoHistoryResult.status === "fulfilled") setSeoResult(seoHistoryResult.value);
+      if (aiStatusResult.status === "fulfilled") setAiStatus(aiStatusResult.value);
     })();
     const params = new URLSearchParams(window.location.search);
     const connected = params.get("connected");
@@ -110,6 +113,11 @@ export function MarketingConsole() {
 
   async function checkHealth() {
     await run(async () => { setHealth(await api.health()); setShowHealth(true); });
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.assign("/login");
   }
 
   function openLead(lead?: Lead) {
@@ -163,6 +171,7 @@ export function MarketingConsole() {
     SEO: ["Search intelligence", "Audit your website and open actionable guidance for every verified issue."],
     Leads: ["Lead pipeline", "Create, qualify, update, and follow up with consent-aware contacts."],
     Analytics: ["Activity analytics", "Database-backed inventory, channel output, and action history."],
+    "AI Settings": ["AI provider settings", "Verify the server-side model connection without exposing credentials."],
     Setup: ["Startup setup", "Control business context and approved provider connections."],
   };
 
@@ -200,7 +209,7 @@ export function MarketingConsole() {
         <Link className="wordmark sidebar-logo" href="/"><span className="brand-mark">M</span> marketpilot<span>.ai</span></Link>
         <nav className="side-nav"><small>Workspace</small>{nav.map((item) => <button className={active === item ? "active" : ""} onClick={() => setActive(item)} key={item}><span>{icons[item]}</span>{item}{item === "Content" && data.content.length > 0 && <em>{data.content.length}</em>}</button>)}</nav>
         <div className="connected"><div className="connected-title"><span>Connected services</span><b>{data.metrics.connected_channels ?? 0}</b></div><div className="channel-stack">{data.integrations.slice(0, 5).map((item) => <i key={item.provider}>{item.provider.slice(0, 2)}</i>)}</div><small><span className="live-dot" /> {error ? "Service needs attention" : "Backend responding"}</small></div>
-        <div className="user-card"><span>ME</span><div><b>Owner workspace</b><small>Authentication required before social launch</small></div></div>
+        <div className="user-card"><span>ME</span><div><b>Owner workspace</b><small>Private signed session</small></div><button onClick={() => void logout()}>Log out</button></div>
       </aside>
 
       <main className="workspace">
@@ -230,6 +239,8 @@ export function MarketingConsole() {
           {active === "Leads" && <section className="panel full-panel"><div className="panel-head"><div><h2>Consent-aware leads</h2><p>Create and qualify contacts; Brevo sending requires consent</p></div><button className="button button-primary" onClick={() => openLead()}>＋ Add lead</button></div><div className="lead-table"><div className="table-head"><span>Contact</span><span>Source</span><span>Qualification</span><span>Stage</span><span>Actions</span></div>{data.leads.length === 0 ? <Empty text="No leads yet. Add a consent-aware contact to begin."/> : data.leads.map((lead) => <article key={lead.id}><button className="lead-person row-link" onClick={() => openLead(lead)}><i>{lead.initials}</i><span><b>{lead.name}</b><small>{lead.company || lead.email}</small></span></button><span>{lead.source}</span><div className="lead-score"><i style={{ width: `${lead.score}%` }} /><b>{lead.score}</b></div><span className="lead-stage">{lead.stage}</span><div className="lead-actions"><button onClick={() => openLead(lead)}>Edit</button><button disabled={busy || !lead.consent} title={lead.consent ? "Send via Brevo" : "Consent not recorded"} onClick={() => void run(async () => { await api.followUp(lead.id); notify(`Follow-up sent to ${lead.name}`); })}>{lead.consent ? "Email" : "No consent"}</button></div></article>)}</div></section>}
 
           {active === "Analytics" && <div className="analytics-layout"><section className="panel analytics-summary"><div className="panel-head"><div><h2>Persisted inventory</h2><p>Exact database counts</p></div></div>{Object.entries(analytics.totals).map(([label, value]) => <article key={label}><span>{label.replaceAll("_", " ")}</span><strong>{value}</strong></article>)}<div className="platform-breakdown"><h3>Content by channel</h3>{Object.keys(analytics.content_by_platform).length === 0 ? <p>No channel content yet.</p> : Object.entries(analytics.content_by_platform).map(([platform, value]) => <p key={platform}><span>{platform}</span><b>{value}</b></p>)}</div></section><section className="panel activity-feed"><div className="panel-head"><div><h2>Recent actions</h2><p>Audited backend events</p></div></div>{data.activity.length === 0 ? <Empty text="Actions will appear after you use the workspace."/> : data.activity.map((item) => <article key={item.id}><i>✓</i><div><b>{item.action.replaceAll(".", " ")}</b><small>{item.entity_type} · {new Date(item.created_at).toLocaleString()}</small></div></article>)}</section></div>}
+
+          {active === "AI Settings" && <div className="ai-settings-layout"><section className="panel ai-settings-card"><div className="panel-head"><div><h2>AI connection</h2><p>Server-side credentials from Render</p></div><em className={aiStatus?.configured ? "ai-status-ready" : "ai-status-missing"}>{aiStatus?.status.replaceAll("_", " ") ?? "checking"}</em></div><div className="readiness-list"><p><span>Provider</span><b>{aiStatus?.provider ?? "—"}</b></p><p><span>Model</span><b>{aiStatus?.model ?? "—"}</b></p><p><span>Safe fallback</span><b>{aiStatus?.fallback_enabled ? "Enabled" : "—"}</b></p><p><span>Credential storage</span><b>Render only</b></p></div><div className="ai-settings-actions"><button className="button button-primary" disabled={busy || !aiStatus?.configured} onClick={() => void run(async () => { const result = await api.testAi(); setAiTestMessage(result.message); setAiStatus(await api.aiStatus()); notify("AI connection verified"); })}>{busy ? "Testing…" : "Test AI connection"}</button><button className="button button-ghost" disabled={busy} onClick={() => void run(async () => { setAiStatus(await api.aiStatus()); setAiTestMessage(""); })}>Refresh status</button></div>{aiTestMessage && <div className="ai-test-result">✓ {aiTestMessage}</div>}{!aiStatus?.configured && <div className="ai-config-warning"><b>AI is using the safe rules engine.</b><span>Add AI_API_KEY, AI_BASE_URL, and AI_MODEL to Render, redeploy, then refresh.</span></div>}</section><section className="panel ai-provider-help"><div className="panel-head"><div><h2>Provider configuration</h2><p>Never paste API keys into the browser</p></div></div><div className="provider-options"><article><b>Google Gemini</b><span>Best free starting option</span><code>generativelanguage.googleapis.com/v1beta/openai</code></article><article><b>Groq</b><span>Fast OpenAI-compatible inference</span><code>api.groq.com/openai/v1</code></article><article><b>OpenRouter</b><span>Free-model routing and many models</span><code>openrouter.ai/api/v1</code></article><article><b>OpenAI</b><span>Paid, reliable production option</span><code>api.openai.com/v1</code></article></div><div className="secret-note"><b>Required Render variables</b><code>AI_API_KEY</code><code>AI_BASE_URL</code><code>AI_MODEL</code><small>The API key is never returned by the backend or included in browser JavaScript.</small></div></section></div>}
 
           {active === "Setup" && <div className="setup-layout"><section className="panel setup-form"><div className="panel-head"><div><h2>Business knowledge</h2><p>Saved context grounds every generated plan and draft</p></div></div>{(["startup_name","website","description","audience","offer","voice"] as const).map((key) => <label key={key}><span>{key.replaceAll("_", " ")}</span>{["description","audience","offer"].includes(key) ? <textarea value={profile[key]} onChange={(event) => setProfile((current) => ({...current,[key]:event.target.value}))}/> : <input value={profile[key]} onChange={(event) => setProfile((current) => ({...current,[key]:event.target.value}))}/>}</label>)}<button className="button button-primary" disabled={busy} onClick={() => void run(async () => { const saved = await api.updateProfile(profile); setProfile({ startup_name: saved.startup_name, website: saved.website, description: saved.description, audience: saved.audience, offer: saved.offer, voice: saved.voice }); notify("Startup knowledge saved"); })}>Save startup profile</button></section><section className="connections-grid"><h2>Connections</h2>{data.integrations.map((item) => <article key={item.provider}><span>{providerLabels[item.provider]?.slice(0,2)}</span><div><b>{providerLabels[item.provider]}</b><small>{item.account_name || (item.configured ? "Credentials ready" : "Add credentials in Render")}</small></div><em className={`connection-${item.status}`}>{item.status.replaceAll("_", " ")}</em>{item.provider === "brevo" && item.status === "ready" ? <button disabled>Configured</button> : item.status === "connected" ? <button className="danger-link" onClick={() => void run(async () => { await api.disconnect(item.provider); await refresh(); notify(`${providerLabels[item.provider]} disconnected`); })}>Disconnect</button> : <button disabled={busy} onClick={() => void connect(item.provider)}>Connect</button>}</article>)}</section></div>}
         </section>

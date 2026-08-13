@@ -38,6 +38,21 @@ export type Lead = {
   created_at: string;
 };
 
+export type AiStatus = {
+  provider: string;
+  status: "configured" | "not_configured";
+  configured: boolean;
+  model: string;
+  fallback_enabled: boolean;
+};
+
+export type AiTestResult = {
+  provider: string;
+  status: "ok";
+  model: string;
+  message: string;
+};
+
 export type Integration = {
   provider: "x" | "linkedin" | "instagram" | "reddit" | "brevo";
   status: string;
