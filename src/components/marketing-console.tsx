@@ -60,12 +60,16 @@ export function MarketingConsole() {
   }, []);
 
   useEffect(() => {
-    void refresh();
-    void api.profile().then((value) => {
-      setProfile({ startup_name: value.startup_name, website: value.website, description: value.description, audience: value.audience, offer: value.offer, voice: value.voice });
-      setSeoUrl(value.website);
-    }).catch((reason) => setError(reason instanceof Error ? reason.message : "Profile could not be loaded"));
-    void api.latestSeo().then(setSeoResult).catch((reason) => setError(reason instanceof Error ? reason.message : "SEO history could not be loaded"));
+    void (async () => {
+      await refresh();
+      const [profileResult, seoResult] = await Promise.allSettled([api.profile(), api.latestSeo()]);
+      if (profileResult.status === "fulfilled") {
+        const value = profileResult.value;
+        setProfile({ startup_name: value.startup_name, website: value.website, description: value.description, audience: value.audience, offer: value.offer, voice: value.voice });
+        setSeoUrl(value.website);
+      }
+      if (seoResult.status === "fulfilled") setSeoResult(seoResult.value);
+    })();
     const params = new URLSearchParams(window.location.search);
     const connected = params.get("connected");
     const failed = params.get("integration_error");

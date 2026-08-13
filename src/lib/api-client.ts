@@ -17,10 +17,15 @@ function errorMessage(body: unknown): string {
   return "Request failed";
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, allowRetry = true): Promise<T> {
   const response = await fetch(`/api/backend${path}`, { ...init, headers: { "Content-Type": "application/json", ...init?.headers } });
   if (response.status === 204) return undefined as T;
   const body: unknown = await response.json().catch(() => ({}));
+  const method = init?.method ?? "GET";
+  if (!response.ok && allowRetry && method === "GET" && response.status >= 500) {
+    await new Promise((resolve) => window.setTimeout(resolve, 2500));
+    return request<T>(path, init, false);
+  }
   if (!response.ok) throw new Error(errorMessage(body));
   return body as T;
 }
