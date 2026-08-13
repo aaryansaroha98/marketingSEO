@@ -57,7 +57,7 @@ export default function Home() {
         <div><div className="eyebrow"><span className="pulse" /> Ready when you are</div><h2>Your next growth chapter<br />starts with one click.</h2></div>
         <Link className="button button-primary" href="/app">Launch your workspace <span>→</span></Link>
       </section>
-      <footer className="shell"><Link className="wordmark" href="/"><span className="brand-mark">M</span> marketpilot<span>.ai</span></Link><p>AI-powered marketing, with humans in control.</p><small>© 2026 MarketPilot AI</small></footer>
+      <footer className="shell"><Link className="wordmark" href="/"><span className="brand-mark">M</span> marketpilot<span>.ai</span></Link><p>AI-powered marketing, with humans in control.</p><div className="footer-legal"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/data-deletion">Data deletion</a><a href="/support">Support</a></div><small>© 2026 MarketPilot AI</small></footer>
     </main>
   );
 }
